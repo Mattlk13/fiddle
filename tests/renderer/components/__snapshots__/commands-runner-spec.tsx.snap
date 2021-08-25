@@ -1,6 +1,30 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Runner component renders "checking status" 1`] = `
+exports[`Runner component renders VersionState.downloading 1`] = `
+<Blueprint3.Button
+  className="button-run"
+  disabled={true}
+  icon={
+    <Blueprint3.Spinner
+      size={16}
+      value={50}
+    />
+  }
+  text="Downloading"
+/>
+`;
+
+exports[`Runner component renders VersionState.ready 1`] = `
+<Blueprint3.Button
+  className="button-run"
+  disabled={false}
+  icon="play"
+  onClick={[MockFunction]}
+  text="Run"
+/>
+`;
+
+exports[`Runner component renders VersionState.unknown 1`] = `
 <Blueprint3.Button
   className="button-run"
   disabled={true}
@@ -13,16 +37,7 @@ exports[`Runner component renders "checking status" 1`] = `
 />
 `;
 
-exports[`Runner component renders default 1`] = `
-<Blueprint3.Button
-  className="button-run"
-  icon="play"
-  onClick={[MockFunction]}
-  text="Run"
-/>
-`;
-
-exports[`Runner component renders downloading 1`] = `
+exports[`Runner component renders VersionState.unzipping 1`] = `
 <Blueprint3.Button
   className="button-run"
   disabled={true}
@@ -31,7 +46,30 @@ exports[`Runner component renders downloading 1`] = `
       size={16}
     />
   }
-  text="Downloading"
+  text="Unzipping"
+/>
+`;
+
+exports[`Runner component renders idle 1`] = `
+<Blueprint3.Button
+  className="button-run"
+  disabled={false}
+  icon="play"
+  onClick={[MockFunction]}
+  text="Run"
+/>
+`;
+
+exports[`Runner component renders installing modules 1`] = `
+<Blueprint3.Button
+  className="button-run"
+  disabled={false}
+  icon={
+    <Blueprint3.Spinner
+      size={16}
+    />
+  }
+  text="Installing modules"
 />
 `;
 
@@ -39,6 +77,7 @@ exports[`Runner component renders running 1`] = `
 <Blueprint3.Button
   active={true}
   className="button-run"
+  disabled={false}
   icon="stop"
   onClick={[MockFunction]}
   text="Stop"

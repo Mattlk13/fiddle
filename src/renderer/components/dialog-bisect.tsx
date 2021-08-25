@@ -1,51 +1,66 @@
-import { Button, Dialog, Label, MenuItem } from '@blueprintjs/core';
-import { Select } from '@blueprintjs/select';
+import { Button, ButtonGroup, Callout, Dialog, Label } from '@blueprintjs/core';
 import { observer } from 'mobx-react';
 import * as React from 'react';
 
-import { ElectronVersion } from '../../interfaces';
+import { RunnableVersion } from '../../interfaces';
 import { Bisector } from '../bisect';
 import { AppState } from '../state';
-import { filterItem, getItemIcon, getVersionsFromAppState, renderItem } from './commands-version-chooser';
+import { VersionSelect } from './version-select';
 
-const ElectronVersionSelect = Select.ofType<ElectronVersion>();
-
-export interface BisectDialogProps {
+interface BisectDialogProps {
   appState: AppState;
 }
 
-export interface BisectDialogState {
-  startIndex?: number;
-  endIndex?: number;
-  allVersions: Array<ElectronVersion>;
+interface BisectDialogState {
+  startIndex: number;
+  endIndex: number;
+  allVersions: Array<RunnableVersion>;
+  showHelp?: boolean;
 }
 
 /**
  * The "add version" dialog allows users to add custom builds of Electron.
  *
- * @class AddVersionDialog
+ * @class BisectDialog
  * @extends {React.Component<BisectDialogProps, BisectDialogState>}
  */
 @observer
-export class BisectDialog extends React.Component<BisectDialogProps, BisectDialogState> {
+export class BisectDialog extends React.Component<
+  BisectDialogProps,
+  BisectDialogState
+> {
   constructor(props: BisectDialogProps) {
     super(props);
 
     this.onSubmit = this.onSubmit.bind(this);
+    this.onAuto = this.onAuto.bind(this);
     this.onClose = this.onClose.bind(this);
     this.onBeginSelect = this.onBeginSelect.bind(this);
     this.onEndSelect = this.onEndSelect.bind(this);
+    this.showHelp = this.showHelp.bind(this);
+    this.isEarliestItemDisabled = this.isEarliestItemDisabled.bind(this);
+    this.isLatestItemDisabled = this.isLatestItemDisabled.bind(this);
 
-    const allVersions = getVersionsFromAppState(this.props.appState);
-    this.state = { allVersions };
+    this.state = {
+      allVersions: this.props.appState.versionsToShow,
+      startIndex: 10,
+      endIndex: 0,
+    };
   }
 
-  public onBeginSelect(version: ElectronVersion) {
+  public onBeginSelect(version: RunnableVersion) {
     this.setState({ startIndex: this.state.allVersions.indexOf(version) });
   }
 
-  public onEndSelect(version: ElectronVersion) {
+  public onEndSelect(version: RunnableVersion) {
     this.setState({ endIndex: this.state.allVersions.indexOf(version) });
+  }
+
+  getBisectRange(): RunnableVersion[] {
+    const { endIndex, startIndex, allVersions } = this.state;
+    return endIndex !== undefined && startIndex !== undefined
+      ? allVersions.slice(endIndex, startIndex + 1).reverse()
+      : [];
   }
 
   /**
@@ -54,21 +69,22 @@ export class BisectDialog extends React.Component<BisectDialogProps, BisectDialo
    * @returns {Promise<void>}
    */
   public async onSubmit(): Promise<void> {
-    const { endIndex, startIndex, allVersions } = this.state;
-    const { appState } = this.props;
-
-    if (endIndex === undefined || startIndex === undefined) {
-      return;
+    const range = this.getBisectRange();
+    if (range.length > 1) {
+      const { appState } = this.props;
+      appState.Bisector = new Bisector(range);
+      const initialBisectPivot = appState.Bisector.getCurrentVersion().version;
+      appState.setVersion(initialBisectPivot);
+      this.onClose();
     }
+  }
 
-    const bisectRange = allVersions
-      .slice(endIndex, startIndex + 1)
-      .reverse();
-
-    appState.Bisector = new Bisector(bisectRange);
-    const initialBisectPivot = appState.Bisector.getCurrentVersion().version;
-    appState.setVersion(initialBisectPivot);
-    this.onClose();
+  public async onAuto(): Promise<void> {
+    const range = this.getBisectRange();
+    if (range.length > 1) {
+      window.ElectronFiddle.app.runner.autobisect(range);
+      this.onClose();
+    }
   }
 
   /**
@@ -78,30 +94,95 @@ export class BisectDialog extends React.Component<BisectDialogProps, BisectDialo
     this.props.appState.isBisectDialogShowing = false;
   }
 
-  get buttons() {
-    const canSubmit =
-      !!this.state.startIndex &&
-      !!this.state.endIndex &&
-      this.state.startIndex > this.state.endIndex;
+  /**
+   * Shows the additional help
+   */
+  public showHelp() {
+    this.setState({ showHelp: true });
+  }
 
+  /**
+   * Can we get this show on the road?
+   */
+  get canSubmit(): boolean {
+    return this.state.startIndex > this.state.endIndex;
+  }
+
+  /**
+   * Can we autobisect?
+   */
+  get canAuto(): boolean {
+    return this.canSubmit;
+  }
+
+  /**
+   * Renders the buttons
+   */
+  get buttons() {
     return [
-      (
-        <Button
-          icon='play'
-          key='submit'
-          disabled={!canSubmit}
-          onClick={this.onSubmit}
-          text='Begin'
-        />
-      ), (
-        <Button
-          icon='cross'
-          key='cancel'
-          onClick={this.onClose}
-          text='Cancel'
-        />
-      )
+      <Button
+        icon="play"
+        key="submit"
+        disabled={!this.canSubmit}
+        onClick={this.onSubmit}
+        text="Begin"
+      />,
+      <Button
+        icon="lab-test"
+        key="auto"
+        disabled={!this.canAuto}
+        onClick={this.onAuto}
+        text="Auto"
+      />,
+      <Button icon="cross" key="cancel" onClick={this.onClose} text="Cancel" />,
     ];
+  }
+
+  /**
+   * Renders the help
+   */
+  get help() {
+    let moreHelp = (
+      <Button icon="help" text="Show help" onClick={this.showHelp} />
+    );
+
+    if (this.state.showHelp) {
+      moreHelp = (
+        <>
+          <p>
+            First, write a fiddle that reproduces a bug or an issue. Then,
+            select the earliest version to start your search with. Typically,
+            that&apos;s the &quot;last known good&quot; version that did not
+            have the bug. Then, select that latest version to end the search
+            with, usually the &quot;first known bad&quot; version.
+          </p>
+          <p>
+            Once you begin your bisect, Fiddle will run your fiddle with a
+            number of Electron versions, closing in on the version that
+            introduced the bug. Once completed, you will know which Electron
+            version introduced your issue.
+          </p>
+        </>
+      );
+    }
+
+    return (
+      <Callout style={{ marginTop: 0, marginBottom: '1rem' }}>
+        <p>
+          A &quot;bisect&quot; is a popular method{' '}
+          <a
+            href="https://git-scm.com/docs/git-bisect"
+            target="_blank"
+            rel="noreferrer"
+          >
+            borrowed from <code>git</code>
+          </a>{' '}
+          for learning which version of Electron introduced a bug. This tool
+          helps you perform a bisect.
+        </p>
+        {moreHelp}
+      </Callout>
+    );
   }
 
   public render() {
@@ -112,53 +193,67 @@ export class BisectDialog extends React.Component<BisectDialogProps, BisectDialo
       <Dialog
         isOpen={isBisectDialogShowing}
         onClose={this.onClose}
-        title='Start a bisect session'
-        className='dialog-add-version'
+        title="Start a bisect session"
+        className="dialog-add-version"
       >
-        <div className='bp3-dialog-body'>
+        <div className="bp3-dialog-body">
+          {this.help}
           <Label>
-            Earliest Version
-            <ElectronVersionSelect
-              filterable={true}
-              items={allVersions}
-              itemRenderer={renderItem}
-              itemPredicate={filterItem}
-              onItemSelect={this.onBeginSelect}
-              noResults={<MenuItem disabled={true} text='No results.' />}
-            >
-              <Button
-                text={startIndex ? `v${allVersions[startIndex].version}` : ``}
-                icon={startIndex ? getItemIcon(allVersions[startIndex]) : 'small-minus'}
-                fill={true}
+            Earliest Version (Last &quot;known good&quot; version)
+            <ButtonGroup fill={true}>
+              <VersionSelect
+                currentVersion={allVersions[startIndex]}
+                appState={this.props.appState}
+                onVersionSelect={this.onBeginSelect}
+                itemDisabled={this.isEarliestItemDisabled}
               />
-            </ElectronVersionSelect>
+            </ButtonGroup>
           </Label>
           <Label>
-            Latest Version
-            <ElectronVersionSelect
-              filterable={true}
-              items={allVersions.slice(0, startIndex!)}
-              itemRenderer={renderItem}
-              itemPredicate={filterItem}
-              onItemSelect={this.onEndSelect}
-              noResults={<MenuItem disabled={true} text='No results.' />}
-              disabled={!startIndex}
-            >
-              <Button
-                text={endIndex ? `v${allVersions[endIndex].version}` : ``}
-                icon={endIndex ? getItemIcon(allVersions[endIndex]) : 'small-minus'}
-                fill={true}
-                disabled={!startIndex}
+            Latest Version (First &quot;known bad&quot; version)
+            <ButtonGroup fill={true}>
+              <VersionSelect
+                currentVersion={allVersions[endIndex]}
+                appState={this.props.appState}
+                onVersionSelect={this.onEndSelect}
+                itemDisabled={this.isLatestItemDisabled}
               />
-            </ElectronVersionSelect>
+            </ButtonGroup>
           </Label>
         </div>
-        <div className='bp3-dialog-footer'>
-          <div className='bp3-dialog-footer-actions'>
-            {this.buttons}
-          </div>
+        <div className="bp3-dialog-footer">
+          <div className="bp3-dialog-footer-actions">{this.buttons}</div>
         </div>
       </Dialog>
     );
+  }
+
+  /**
+   * Should an item in the "earliest version" dropdown be disabled?
+   *
+   * @param {RunnableVersion} version
+   * @returns {boolean}
+   */
+  public isEarliestItemDisabled(version: RunnableVersion): boolean {
+    const { allVersions, endIndex } = this.state;
+
+    // In the array, "newer" versions will have a lower index.
+    // 0: 5.0.0
+    // 1: 4.0.0
+    // 2: 3.0.0
+    // ...
+    return allVersions.indexOf(version) < endIndex + 1;
+  }
+
+  /**
+   * Should an item in the "latest version" dropdown be disabled?
+   *
+   * @param {RunnableVersion} version
+   * @returns {boolean}
+   */
+  public isLatestItemDisabled(version: RunnableVersion): boolean {
+    const { allVersions, startIndex } = this.state;
+
+    return allVersions.indexOf(version) > startIndex - 1;
   }
 }

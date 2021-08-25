@@ -1,12 +1,12 @@
-import { ElectronVersion } from '../interfaces';
+import { RunnableVersion } from '../interfaces';
 
 export class Bisector {
-  public revList: Array<ElectronVersion>;
+  public revList: Array<RunnableVersion>;
   public minRev: number;
   public maxRev: number;
   private pivot: number;
 
-  constructor(revList: Array<ElectronVersion>) {
+  constructor(revList: Array<RunnableVersion>) {
     this.getCurrentVersion = this.getCurrentVersion.bind(this);
     this.continue = this.continue.bind(this);
     this.calculatePivot = this.calculatePivot.bind(this);
@@ -36,7 +36,8 @@ export class Bisector {
         isBisectOver = true;
       }
     } else {
-      const downPivot = Math.floor((this.pivot - this.minRev) / 2) + this.minRev;
+      const downPivot =
+        Math.floor((this.pivot - this.minRev) / 2) + this.minRev;
       this.maxRev = this.pivot;
       if (downPivot !== this.minRev && downPivot !== this.pivot) {
         this.pivot = downPivot;

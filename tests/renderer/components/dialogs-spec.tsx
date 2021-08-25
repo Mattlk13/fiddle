@@ -1,11 +1,13 @@
-import { shallow } from 'enzyme';
 import * as React from 'react';
+import { shallow } from 'enzyme';
 
 import { Dialogs } from '../../../src/renderer/components/dialogs';
 import { overridePlatform, resetPlatform } from '../../utils';
 
+import { StateMock } from '../../mocks/mocks';
+
 describe('Dialogs component', () => {
-  let store: any = {};
+  let store: StateMock;
 
   beforeAll(() => {
     // We render the buttons different depending on the
@@ -14,12 +16,8 @@ describe('Dialogs component', () => {
   });
 
   beforeEach(() => {
-    store = {
-      isTokenDialogShowing: false,
-      isSettingsShowing: false,
-      isAddVersionDialogShowing: false,
-      warningDialogTexts: { label: '', ok: '', cancel: '' }
-    };
+    ({ state: store } = (window as any).ElectronFiddle.app);
+    store.isGenericDialogShowing = true;
   });
 
   afterAll(() => {
@@ -28,19 +26,19 @@ describe('Dialogs component', () => {
 
   it('renders the token dialog', () => {
     store.isTokenDialogShowing = true;
-    const wrapper = shallow(<Dialogs appState={store} />);
-    expect(wrapper.text()).toBe('<TokenDialog /><ConfirmDialog />');
+    const wrapper = shallow(<Dialogs appState={store as any} />);
+    expect(wrapper.text()).toBe('<TokenDialog /><GenericDialog />');
   });
 
   it('renders the settings dialog', () => {
     store.isSettingsShowing = true;
-    const wrapper = shallow(<Dialogs appState={store} />);
-    expect(wrapper.text()).toBe('<Settings /><ConfirmDialog />');
+    const wrapper = shallow(<Dialogs appState={store as any} />);
+    expect(wrapper.text()).toBe('<Settings /><GenericDialog />');
   });
 
   it('renders the settings dialog', () => {
     store.isAddVersionDialogShowing = true;
-    const wrapper = shallow(<Dialogs appState={store} />);
-    expect(wrapper.text()).toBe('<AddVersionDialog /><ConfirmDialog />');
+    const wrapper = shallow(<Dialogs appState={store as any} />);
+    expect(wrapper.text()).toBe('<AddVersionDialog /><GenericDialog />');
   });
 });

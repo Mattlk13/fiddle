@@ -1,9 +1,12 @@
-import { BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
+import { IpcEvents } from '../ipc-events';
 import { createContextMenu } from './context-menu';
+import { ipcMainManager } from './ipc';
+import * as path from 'path';
 
 // Keep a global reference of the window objects, if we don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
-export let browserWindows: Array<BrowserWindow> = [];
+export let browserWindows: Array<BrowserWindow | null> = [];
 
 /**
  * Gets default options for the main window
@@ -21,11 +24,12 @@ export function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions
     backgroundColor: '#1d2427',
     webPreferences: {
       webviewTag: false,
-      nodeIntegration: true
-    }
+      nodeIntegration: true,
+      contextIsolation: false,
+      preload: path.join(__dirname, '..', 'preload', 'preload'),
+    },
   };
 }
-
 
 /**
  * Creates a new main window.
@@ -35,20 +39,28 @@ export function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions
  */
 export function createMainWindow(): Electron.BrowserWindow {
   console.log(`Creating main window`);
-  const browserWindow = new BrowserWindow(getMainWindowOptions());
+  let browserWindow: BrowserWindow | null;
+  browserWindow = new BrowserWindow(getMainWindowOptions());
   browserWindow.loadFile('./dist/static/index.html');
 
   browserWindow.webContents.once('dom-ready', () => {
-    browserWindow.show();
-
     if (browserWindow) {
+      browserWindow.show();
+
       createContextMenu(browserWindow);
     }
   });
 
+  browserWindow.on('focus', () => {
+    if (browserWindow) {
+      ipcMainManager.send(IpcEvents.SET_SHOW_ME_TEMPLATE);
+    }
+  });
+
   browserWindow.on('closed', () => {
-    browserWindows = browserWindows
-      .filter((bw) => browserWindow !== bw);
+    browserWindows = browserWindows.filter((bw) => browserWindow !== bw);
+
+    browserWindow = null;
   });
 
   browserWindow.webContents.on('new-window', (event, url) => {
@@ -59,6 +71,28 @@ export function createMainWindow(): Electron.BrowserWindow {
   browserWindow.webContents.on('will-navigate', (event, url) => {
     event.preventDefault();
     shell.openExternal(url);
+  });
+
+  ipcMainManager.on(IpcEvents.SHOW_INACTIVE, () => {
+    if (browserWindow) {
+      browserWindow.showInactive();
+    }
+  });
+
+  ipcMainManager.handle(IpcEvents.GET_APP_PATHS, () => {
+    const paths = {};
+    const pathsToQuery = [
+      'home',
+      'appData',
+      'userData',
+      'temp',
+      'downloads',
+      'desktop',
+    ];
+    for (const path of pathsToQuery) {
+      paths[path] = app.getPath(path as any);
+    }
+    return paths;
   });
 
   browserWindows.push(browserWindow);
@@ -72,5 +106,7 @@ export function createMainWindow(): Electron.BrowserWindow {
  * @returns {Electron.BrowserWindow}
  */
 export function getOrCreateMainWindow(): Electron.BrowserWindow {
-  return BrowserWindow.getFocusedWindow() || browserWindows[0] || createMainWindow();
+  return (
+    BrowserWindow.getFocusedWindow() || browserWindows[0] || createMainWindow()
+  );
 }

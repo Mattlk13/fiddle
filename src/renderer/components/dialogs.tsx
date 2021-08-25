@@ -5,12 +5,11 @@ import { AppState } from '../state';
 import { AddThemeDialog } from './dialog-add-theme';
 import { AddVersionDialog } from './dialog-add-version';
 import { BisectDialog } from './dialog-bisect';
-import { ConfirmDialog } from './dialog-confirm';
+import { GenericDialog } from './dialog-generic';
 import { TokenDialog } from './dialog-token';
-import { WarningDialog } from './dialog-warning';
 import { Settings } from './settings';
 
-export interface DialogsProps {
+interface DialogsProps {
   appState: AppState;
 }
 
@@ -21,7 +20,7 @@ export interface DialogsProps {
  * @extends {React.Component<DialogsProps, {}>}
  */
 @observer
-export class Dialogs extends React.Component<DialogsProps, {}> {
+export class Dialogs extends React.Component<DialogsProps> {
   public render() {
     const { appState } = this.props;
     const {
@@ -29,34 +28,36 @@ export class Dialogs extends React.Component<DialogsProps, {}> {
       isSettingsShowing,
       isAddVersionDialogShowing,
       isThemeDialogShowing,
-      isBisectDialogShowing
+      isBisectDialogShowing,
+      isGenericDialogShowing,
     } = appState;
-    const maybeToken = isTokenDialogShowing
-      ? <TokenDialog key='dialogs' appState={appState} />
-      : null;
-    const maybeSettings = isSettingsShowing
-      ? <Settings key='settings' appState={appState} />
-      : null;
-    const maybeAddLocalVersion = isAddVersionDialogShowing
-      ? <AddVersionDialog key='add-version-dialog' appState={appState} />
-      : null;
-    const maybeMonaco = isThemeDialogShowing ? <AddThemeDialog appState={appState} />
-      : null;
-    const maybeBisect = isBisectDialogShowing
-      ? <BisectDialog key='bisect-dialog' appState={appState} />
-      : null;
-    const eitherWarningOrPrompt = appState.isWarningDialogShowing
-      ? <WarningDialog appState={appState} />
-      : <ConfirmDialog appState={appState} />;
+    const maybeToken = isTokenDialogShowing ? (
+      <TokenDialog key="dialogs" appState={appState} />
+    ) : null;
+    const maybeSettings = isSettingsShowing ? (
+      <Settings key="settings" appState={appState} />
+    ) : null;
+    const maybeAddLocalVersion = isAddVersionDialogShowing ? (
+      <AddVersionDialog key="add-version-dialog" appState={appState} />
+    ) : null;
+    const maybeMonaco = isThemeDialogShowing ? (
+      <AddThemeDialog appState={appState} />
+    ) : null;
+    const maybeBisect = isBisectDialogShowing ? (
+      <BisectDialog key="bisect-dialog" appState={appState} />
+    ) : null;
+    const genericDialog = isGenericDialogShowing ? (
+      <GenericDialog appState={appState} />
+    ) : null;
 
     return (
-      <div key='dialogs' className='dialogs'>
+      <div key="dialogs" className="dialogs">
         {maybeToken}
         {maybeSettings}
         {maybeAddLocalVersion}
         {maybeMonaco}
         {maybeBisect}
-        {eitherWarningOrPrompt}
+        {genericDialog}
       </div>
     );
   }

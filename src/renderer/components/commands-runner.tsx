@@ -1,14 +1,11 @@
-import { Button, IButtonProps, Spinner } from '@blueprintjs/core';
+import { Button, ButtonProps, Spinner } from '@blueprintjs/core';
 import { observer } from 'mobx-react';
 import * as React from 'react';
 
-import { ElectronVersionState } from '../../interfaces';
+import { VersionState } from '../../interfaces';
 import { AppState } from '../state';
 
-export interface RunnerState {
-}
-
-export interface RunnerProps {
+interface RunnerProps {
   appState: AppState;
 }
 
@@ -17,26 +14,39 @@ export interface RunnerProps {
  * with Electron. It also renders the button that does so.
  *
  * @class Runner
- * @extends {React.Component<RunnerProps, RunnerState>}
+ * @extends {React.Component<RunnerProps>}
  */
 @observer
-export class Runner extends React.Component<RunnerProps, RunnerState> {
+export class Runner extends React.Component<RunnerProps> {
   public render() {
-    const { isRunning, currentElectronVersion } = this.props.appState;
+    const {
+      isRunning,
+      isInstallingModules,
+      currentElectronVersion,
+    } = this.props.appState;
 
     const state = currentElectronVersion && currentElectronVersion.state;
-    const props: IButtonProps = { className: 'button-run' };
+    const props: ButtonProps = { className: 'button-run', disabled: true };
 
-    if (state === ElectronVersionState.downloading) {
+    if (state === VersionState.downloading) {
       props.text = 'Downloading';
-      props.disabled = true;
+      props.icon = (
+        <Spinner size={16} value={currentElectronVersion?.downloadProgress} />
+      );
+    } else if (state === VersionState.unzipping) {
+      props.text = 'Unzipping';
       props.icon = <Spinner size={16} />;
-    } else if (state === ElectronVersionState.ready) {
+    } else if (state === VersionState.ready) {
+      props.disabled = false;
+
       if (isRunning) {
         props.active = true;
         props.text = 'Stop';
         props.onClick = window.ElectronFiddle.app.runner.stop;
         props.icon = 'stop';
+      } else if (isInstallingModules) {
+        props.text = 'Installing modules';
+        props.icon = <Spinner size={16} />;
       } else {
         props.text = 'Run';
         props.onClick = window.ElectronFiddle.app.runner.run;
@@ -44,7 +54,6 @@ export class Runner extends React.Component<RunnerProps, RunnerState> {
       }
     } else {
       props.text = 'Checking status';
-      props.disabled = true;
       props.icon = <Spinner size={16} />;
     }
 

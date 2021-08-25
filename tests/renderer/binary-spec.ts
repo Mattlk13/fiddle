@@ -1,36 +1,44 @@
-import { BinaryManager } from '../../src/renderer/binary';
-import { USER_DATA_PATH } from '../../src/renderer/constants';
-import { overridePlatform, resetPlatform } from '../utils';
+import {
+  getElectronBinaryPath,
+  getVersionState,
+  removeBinary,
+  setupBinary,
+} from '../../src/renderer/binary';
+import {
+  RunnableVersion,
+  VersionSource,
+  VersionState,
+} from '../../src/interfaces';
+import { overridePlatform, resetPlatform, waitFor } from '../utils';
 
 import * as path from 'path';
+import * as semver from 'semver';
+import extract from 'extract-zip';
+import { download as electronDownload } from '@electron/get';
 
 jest.mock('fs-extra');
+jest.mock('extract-zip');
+jest.mock('@electron/get');
 jest.mock('../../src/renderer/ipc', () => ({}));
-jest.mock('extract-zip', () => {
-  return jest.fn((_a, _b, c) => c());
-});
 jest.mock('../../src/renderer/constants', () => ({
-  USER_DATA_PATH: 'user/data/'
+  USER_DATA_PATH: 'user/data/',
 }));
-jest.mock('../../src/utils/import', () => ({
-  fancyImport: async (p: string) => {
-    if (p === 'fs-extra') {
-      return require('fs-extra');
-    }
-    if (p === 'extract-zip') {
-      return { default: require('extract-zip') };
-    }
-  }
-}));
-jest.mock('electron-download', () => {
-  return jest.fn();
-});
 
 describe('binary', () => {
-  let binaryManager = new BinaryManager();
+  const fs = require('fs-extra');
+  let ver: RunnableVersion;
+  let version = '3.0.0';
 
   beforeEach(() => {
-    binaryManager = new BinaryManager();
+    // the download module holds state between runs,
+    // so use a unique version number in each test to
+    // prevent state pollution
+    version = semver.inc(version, 'patch')!;
+    ver = {
+      source: VersionSource.remote,
+      state: VersionState.unknown,
+      version,
+    };
   });
 
   afterEach(() => {
@@ -39,104 +47,97 @@ describe('binary', () => {
 
   describe('remove()', () => {
     it('removes a version', async () => {
-      const fs = require('fs-extra');
-
       (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
 
-      await binaryManager.remove('v3.0.0');
+      await removeBinary(ver);
       expect(fs.remove).toHaveBeenCalled();
     });
 
     it('retries on failure', async () => {
-      const fs = require('fs-extra');
-
       (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
       (fs.remove as jest.Mock<any>).mockImplementation(() => {
         throw new Error('Bwap bwap');
       });
 
-      await binaryManager.remove('v3.0.0');
+      await removeBinary(ver);
       expect(fs.remove).toHaveBeenCalledTimes(4);
     });
 
-    it('attempts to clean up the version\'s associated typedefs', async () => {
-      const fs = require('fs-extra');
-      binaryManager.removeTypeDefsForVersion = jest.fn();
-
+    it("attempts to clean up the version's associated typedefs", async () => {
+      const { electronTypes } = window.ElectronFiddle.app;
       (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
-
-      await binaryManager.remove('v3.0.0');
-      expect(fs.remove).toHaveBeenCalled();
-      expect(binaryManager.removeTypeDefsForVersion).toHaveBeenCalled();
+      await removeBinary(ver);
+      expect(electronTypes.uncache).toHaveBeenCalledWith(ver);
     });
 
     it('retries typedef cleanup upon failure', async () => {
-      const fs = require('fs-extra');
-      binaryManager.removeTypeDefsForVersion = jest.fn().mockImplementation(() => {
-        throw new Error('Bwap bwap');
-      });
-
       (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
+      const { electronTypes } = window.ElectronFiddle.app;
+      const uncacheSpy = jest
+        .spyOn(electronTypes, 'uncache')
+        .mockImplementation(() => {
+          throw new Error('Bwap bwap');
+        });
 
-      await binaryManager.remove('v3.0.0');
-      expect(binaryManager.removeTypeDefsForVersion).toHaveBeenCalledTimes(4);
-
+      await removeBinary(ver);
+      expect(uncacheSpy).toHaveBeenCalledTimes(4);
     });
   });
 
-  describe('removeTypeDefsForVersion()', () => {
-    it('removes a version\'s typedefs', async () => {
-      const fs = require('fs-extra');
-      (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
-      await binaryManager.removeTypeDefsForVersion('v3.0.0');
-      expect(fs.remove).toHaveBeenCalledWith(path.join(USER_DATA_PATH, 'electron-typedef', '3.0.0'));
+  describe('getVersionState()', () => {
+    it(`returns ${VersionState.downloading} when downloading`, () => {
+      // mock a download in progress
+      let downloadResolve: any;
+      (electronDownload as jest.Mock).mockReturnValueOnce(
+        new Promise((r) => (downloadResolve = r)),
+      );
+
+      setupBinary(ver);
+
+      expect(getVersionState(ver)).toBe(VersionState.downloading);
+      downloadResolve();
     });
 
-    it('throws upon fs failure', async () => {
-      const fs = require('fs-extra');
-      (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
-      (fs.remove as jest.Mock<any>).mockImplementation(() => {
-        throw new Error('Bwap bwap');
-      });
+    it(`returns ${VersionState.unzipping} when unzipping`, async () => {
+      // mock a completed download + an unzip in progress
+      (electronDownload as jest.Mock).mockResolvedValueOnce('/fake/path');
+      let unzipResolve: any;
+      const unzipPromise = new Promise((r) => (unzipResolve = r));
+      (extract as jest.Mock).mockReturnValueOnce(unzipPromise);
 
-      expect.assertions(1);
+      setupBinary(ver);
+      await waitFor(() => getVersionState(ver) === VersionState.unzipping);
 
-      try {
-        await binaryManager.removeTypeDefsForVersion('v3.0.0');
-      } catch (e) {
-        expect(e).toEqual(new Error('Bwap bwap'));
-      }
-    });
-  });
-
-  describe('getDownloadedVersions()', () => {
-    it('finds downloaded versions', async () => {
-      const fs = require('fs-extra');
-
-      (fs.readdir as jest.Mock<any>).mockReturnValue([ 'v3.0.0' ]);
-      (fs.existsSync as jest.Mock<any>).mockReturnValue(true);
-
-      const result = await binaryManager.getDownloadedVersions();
-
-      expect(result).toEqual([ 'v3.0.0' ]);
+      expect(getVersionState(ver)).toBe(VersionState.unzipping);
+      unzipResolve();
     });
 
-    it('is okay without versions ', async () => {
-      const fs = require('fs-extra');
-
-      (fs.readdir as jest.Mock<any>).mockReturnValue([]);
-      const result = await binaryManager.getDownloadedVersions();
-      expect(result).toEqual([]);
+    it(`returns ${VersionState.ready} when it is a local version that exists`, async () => {
+      ver.source = VersionSource.local;
+      ver.localPath = '/fake/path';
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      expect(getVersionState(ver)).toBe(VersionState.ready);
     });
 
-    it('is okay without versions and with errors', async () => {
-      const fs = require('fs-extra');
+    it(`returns ${VersionState.unknown} when it is a local version that is missing`, async () => {
+      ver.source = VersionSource.local;
+      ver.localPath = '/fake/path';
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      expect(getVersionState(ver)).toBe(VersionState.unknown);
+    });
 
-      (fs.readdir as jest.Mock<any>).mockImplementationOnce(() => {
-        throw new Error('💩');
-      });
-      const result = await binaryManager.getDownloadedVersions();
-      expect(result).toEqual([]);
+    it(`returns ${VersionState.ready} when it is a remote version that is downloaded`, async () => {
+      ver.source = VersionSource.remote;
+      ver.localPath = undefined;
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      expect(getVersionState(ver)).toBe(VersionState.ready);
+    });
+
+    it(`returns ${VersionState.unknown} when it is a remote version is not downloaded`, async () => {
+      ver.source = VersionSource.remote;
+      ver.localPath = undefined;
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      expect(getVersionState(ver)).toBe(VersionState.unknown);
     });
   });
 
@@ -144,73 +145,108 @@ describe('binary', () => {
     it('returns the correct path on Windows', () => {
       overridePlatform('win32');
 
-      const result = binaryManager.getElectronBinaryPath('v3.0.0');
-      expect(result).toBe(path.join('user/data/electron-bin/v3.0.0/electron.exe'));
+      const result = getElectronBinaryPath('v3.0.0');
+      expect(result).toBe(
+        path.join('user/data/electron-bin/v3.0.0/electron.exe'),
+      );
     });
 
     it('returns the correct path on Linux', () => {
       overridePlatform('linux');
 
-      const result = binaryManager.getElectronBinaryPath('v3.0.0');
+      const result = getElectronBinaryPath('v3.0.0');
       expect(result).toBe(path.join('user/data/electron-bin/v3.0.0/electron'));
     });
 
     it('returns the correct path on macOS', () => {
       overridePlatform('darwin');
 
-      const result = binaryManager.getElectronBinaryPath('v3.0.0');
-      const expected = 'user/data/electron-bin/v3.0.0/Electron.app/Contents/MacOS/Electron';
+      const result = getElectronBinaryPath('v3.0.0');
+      const expected =
+        'user/data/electron-bin/v3.0.0/Electron.app/Contents/MacOS/Electron';
       expect(result).toBe(path.join(expected));
     });
 
     it('throws on other platforms', () => {
-      overridePlatform('bleepbloop');
+      overridePlatform('android');
 
-      expect(() => binaryManager.getElectronBinaryPath('v3.0.0'))
-        .toThrow();
+      expect(() => getElectronBinaryPath('v3.0.0')).toThrow();
     });
   });
 
-  describe('setup()', () => {
-    it(`downloads a version it hasn't seen before`, async () => {
-      const eDownload = require('electron-download');
-      eDownload.mockImplementationOnce((_p: any, c: any) => c(undefined, '/fake/path'));
+  describe('setupBinary()', () => {
+    it('does not download local versions', async () => {
+      const localPath = '/fake/path';
+      (electronDownload as jest.Mock).mockResolvedValue(localPath);
 
-      await binaryManager.setup('v3.0.0');
+      ver.source = VersionSource.local;
+      ver.state = VersionState.unknown;
+      await setupBinary(ver);
 
-      expect(eDownload).toHaveBeenCalled();
-      expect(binaryManager.state['3.0.0']).toBe('ready');
+      expect(electronDownload).not.toHaveBeenCalled();
+      expect(ver.state).toBe(VersionState.unknown);
     });
 
-    it(`does not download a version again`, async () => {
-      binaryManager.getIsDownloaded = jest.fn(async () => true);
+    it(`downloads a version it has not seen before`, async () => {
+      (fs.existsSync as jest.Mock).mockReturnValueOnce(false);
+      const localPath = '/fake/path';
+      (electronDownload as jest.Mock).mockResolvedValue(localPath);
 
-      await binaryManager.setup('v3.0.0');
+      ver.source = VersionSource.remote;
+      ver.state = VersionState.unknown;
+      await setupBinary(ver);
 
-      expect(binaryManager.getIsDownloaded).toHaveBeenCalled();
-      expect(require('electron-download')).toHaveBeenCalledTimes(0);
-      expect(binaryManager.state['3.0.0']).toBe('ready');
+      expect(electronDownload).toHaveBeenCalled();
+      expect(ver.state).toBe(VersionState.ready);
     });
 
-    it(`does not download a version while already downloading`, async () => {
-      binaryManager.getIsDownloaded = jest.fn(async () => true);
-      binaryManager.state['3.0.0'] = 'downloading';
+    it('handles progress callbacks from electron/get', async () => {
+      const percent = 50;
 
-      await binaryManager.setup('v3.0.0');
+      // mock a download in progress...
+      let downloadResolve: any;
+      let getProgressCallback: any;
+      (electronDownload as jest.Mock).mockImplementation(
+        (_: any, opts: any) => {
+          ({ getProgressCallback } = opts.downloadOptions);
+          return new Promise((r) => (downloadResolve = r));
+        },
+      );
 
-      expect(binaryManager.getIsDownloaded).toHaveBeenCalledTimes(0);
-      expect(require('electron-download')).toHaveBeenCalledTimes(0);
-      expect(binaryManager.state['3.0.0']).toBe('downloading');
+      ver.source = VersionSource.remote;
+      ver.state = VersionState.unknown;
+      setupBinary(ver);
+      await waitFor(() => ver.state === VersionState.downloading);
+
+      expect(ver.downloadProgress).not.toBe(percent);
+      // send a progress update
+      getProgressCallback({ percent });
+      expect(ver.downloadProgress).toBe(percent);
+      // and do it again to trigger a different if-else branch
+      getProgressCallback({ percent });
+      expect(ver.downloadProgress).toBe(percent);
+
+      downloadResolve();
+    });
+
+    it(`returns the same promise if called twice for the same version`, async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+
+      const prom1 = setupBinary(ver);
+      const prom2 = setupBinary(ver);
+
+      expect(prom1).toBe(prom2);
     });
 
     it('handles an error in the zip file', async () => {
-      const eDownload = require('electron-download');
-      eDownload.mockImplementationOnce((_p: any, c: any) => c(undefined, '/fake/path'));
+      (electronDownload as jest.Mock).mockReturnValue('/fake/path');
+      (extract as jest.Mock).mockRejectedValue(new Error('bwap-bwap'));
 
-      const mockZip = require('extract-zip');
-      mockZip.mockImplementationOnce((_a: any, _b: any, c: any) => c(new Error('bwap-bwap')));
+      ver.source = VersionSource.remote;
+      ver.state = VersionState.unknown;
+      await setupBinary(ver);
 
-      await binaryManager.setup('v3.0.0');
+      expect(extract as jest.Mock).toHaveBeenCalledTimes(1);
     });
   });
 });
