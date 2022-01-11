@@ -4,15 +4,14 @@
 // https://electronjs.org/docs/api/shell
 
 const { app, BrowserWindow } = require('electron')
+const path = require('path')
 
-let mainWindow = null
-
-app.on('ready', () => {
-  mainWindow = new BrowserWindow({
+app.whenReady().then(() => {
+  const mainWindow = new BrowserWindow({
     width: 600,
     height: 600,
     webPreferences: {
-      nodeIntegration: true
+      preload: path.join(__dirname, 'preload.js')
     }
   })
 

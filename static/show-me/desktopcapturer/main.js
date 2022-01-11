@@ -5,15 +5,16 @@
 // https://electronjs.org/docs/api/desktop-capturer
 
 const { app, BrowserWindow } = require('electron')
+const path = require('path')
 
-let mainWindow = null
-
-app.on('ready', () => {
-  mainWindow = new BrowserWindow({
+app.whenReady().then(() => {
+  const mainWindow = new BrowserWindow({
     height: 600,
     width: 600,
     webPreferences: {
-      nodeIntegration: true
+      nodeIntegration: false, // default in Electron >= 5
+      contextIsolation: true, // default in Electron >= 12
+      preload: path.join(__dirname, 'preload.js')
     }
   })
 

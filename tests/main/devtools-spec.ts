@@ -1,11 +1,16 @@
+/**
+ * @jest-environment node
+ */
+
 import { setupDevTools } from '../../src/main/devtools';
 import { isDevMode } from '../../src/utils/devmode';
+
 jest.mock('../../src/utils/devmode');
 
 jest.mock('electron-devtools-installer', () => ({
   default: jest.fn(),
   REACT_DEVELOPER_TOOLS: 'REACT_DEVELOPER_TOOLS',
-  REACT_PERF: 'REACT_PERF'
+  REACT_PERF: 'REACT_PERF',
 }));
 
 describe('devtools', () => {

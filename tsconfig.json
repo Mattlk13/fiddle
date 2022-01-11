@@ -1,15 +1,18 @@
 {
   "compilerOptions": {
+    "esModuleInterop": true,
     "outDir": "./dist",
     "allowJs": true,
+    "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "removeComments": false,
     "preserveConstEnums": true,
     "sourceMap": true,
     "lib": [
-      "es2017",
-      "dom"
+      "es2020",
+      "dom",
+      "WebWorker"
     ],
     "noImplicitAny": true,
     "noImplicitReturns": true,
@@ -23,7 +26,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "pretty": true,
-    "target": "es2017",
+    "target": "es2019",
     "jsx": "react",
     "typeRoots": [
       "./node_modules/@types"
@@ -31,10 +34,11 @@
     "baseUrl": "."
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "tests/**/*"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules/**/*"
   ],
   "formatCodeOptions": {
     "indentSize": 2,

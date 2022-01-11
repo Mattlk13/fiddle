@@ -5,38 +5,41 @@ import * as MonacoType from 'monaco-editor';
 import * as React from 'react';
 
 import { EditorId } from '../../interfaces';
-import { getContent } from '../content';
 import { AppState } from '../state';
+import { monacoLanguage } from '../../utils/editor-utils';
 
-export interface EditorProps {
-  appState: AppState;
-  monaco: typeof MonacoType;
+interface EditorProps {
+  readonly appState: AppState;
+  readonly id: EditorId;
+  readonly monaco: typeof MonacoType;
   monacoOptions: MonacoType.editor.IEditorOptions;
-  id: EditorId;
-  options?: Partial<MonacoType.editor.IEditorConstructionOptions>;
   editorDidMount?: (editor: MonacoType.editor.IStandaloneCodeEditor) => void;
-  onChange?: (value: string, event: MonacoType.editor.IModelContentChangedEvent) => void;
+  onChange?: (
+    value: string,
+    event: MonacoType.editor.IModelContentChangedEvent,
+  ) => void;
+  setFocused: (id: EditorId) => void;
 }
 
 export class Editor extends React.Component<EditorProps> {
   public editor: MonacoType.editor.IStandaloneCodeEditor;
-  public language: string = 'javascript';
-  public value: string = '';
+  public language = 'javascript';
+  public value = '';
 
   private containerRef = React.createRef<HTMLDivElement>();
 
   constructor(props: EditorProps) {
     super(props);
 
-    this.language = props.id === 'html' ? 'html' : 'javascript';
+    this.language = monacoLanguage(props.id);
   }
 
   public shouldComponentUpdate() {
     return false;
   }
 
-  public componentDidMount() {
-    this.initMonaco();
+  public async componentDidMount() {
+    await this.initMonaco();
   }
 
   public componentWillUnmount() {
@@ -50,13 +53,9 @@ export class Editor extends React.Component<EditorProps> {
    * @param {MonacoType.editor.IStandaloneCodeEditor} editor
    */
   public async editorDidMount(editor: MonacoType.editor.IStandaloneCodeEditor) {
-    const { editorDidMount } = this.props;
+    const { appState, editorDidMount, id } = this.props;
 
-    // Set the content on the editor
-    await this.setContent();
-
-    // Set the editor as an available object
-    window.ElectronFiddle.editors[this.props.id] = editor;
+    appState.editorMosaic.addEditor(id, editor);
 
     // And notify others
     if (editorDidMount) {
@@ -73,11 +72,18 @@ export class Editor extends React.Component<EditorProps> {
 
     if (ref) {
       this.editor = monaco.editor.create(ref, {
+        automaticLayout: true,
         language: this.language,
         theme: 'main',
         contextmenu: false,
         model: null,
-        ...monacoOptions
+        ...monacoOptions,
+      });
+
+      // mark this editor as focused whenever it is
+      this.editor.onDidFocusEditorText(() => {
+        const { id, setFocused } = this.props;
+        setFocused(id);
       });
 
       await this.editorDidMount(this.editor);
@@ -95,37 +101,6 @@ export class Editor extends React.Component<EditorProps> {
   }
 
   public render() {
-    return <div className='editorContainer' ref={this.containerRef} />;
-  }
-
-  /**
-   * Sets the content on the editor, including the model and the view state.
-   *
-   * @private
-   * @memberof Editor
-   */
-  private async setContent() {
-    const { appState, id, monaco } = this.props;
-    const { version } = appState;
-
-    const backup = appState.getAndRemoveEditorValueBackup(id);
-
-    if (backup && backup.model) {
-      console.log(`Editor: Backup found, restoring state`);
-
-      if (backup.viewState) {
-        this.editor.restoreViewState(backup.viewState);
-      }
-
-      this.editor.setModel(backup.model);
-    } else {
-      const value = await getContent(id, version);
-      const model = monaco.editor.createModel(value, this.language);
-      model.updateOptions({
-        tabSize: 2
-      });
-
-      this.editor.setModel(model);
-    }
+    return <div className="editorContainer" ref={this.containerRef} />;
   }
 }

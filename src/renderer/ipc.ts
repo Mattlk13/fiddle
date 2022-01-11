@@ -10,11 +10,12 @@ import { IpcEvents, ipcRendererEvents } from '../ipc-events';
  * @class IpcManager
  * @extends {EventEmitter}
  */
-export class IpcRendererManager extends EventEmitter {
+class IpcRendererManager extends EventEmitter {
   constructor() {
     super();
 
     ipcRendererEvents.forEach((name) => {
+      ipcRenderer.removeAllListeners(name);
       ipcRenderer.on(name, (...args: Array<any>) => this.emit(name, ...args));
     });
   }
@@ -30,6 +31,10 @@ export class IpcRendererManager extends EventEmitter {
    */
   public send(channel: IpcEvents, ...args: Array<any>) {
     ipcRenderer.send(channel, ...args);
+  }
+
+  public invoke(channel: IpcEvents, ...args: Array<any>) {
+    return ipcRenderer.invoke(channel, ...args);
   }
 }
 

@@ -3,11 +3,10 @@
 // For more info, see:
 // https://electronjs.org/docs/api/screen
 
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
+const path = require('path')
 
-let mainWindow = null
-
-app.on('ready', () => {
+app.whenReady().then(() => {
   // We cannot require the screen module until the
   // app is ready
   const { screen } = require('electron')
@@ -17,13 +16,18 @@ app.on('ready', () => {
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width, height } = primaryDisplay.workAreaSize
 
-  mainWindow = new BrowserWindow({
+  const mainWindow = new BrowserWindow({
     width,
     height,
     webPreferences: {
-      nodeIntegration: true
+      nodeIntegration: false, // default in Electron >= 5
+      contextIsolation: true, // default in Electron >= 12
+      preload: path.join(__dirname, 'preload.js')
     }
   })
 
+  ipcMain.handle('get-displays', () => {
+    return screen.getAllDisplays()
+  })
   mainWindow.loadFile('index.html')
 })
